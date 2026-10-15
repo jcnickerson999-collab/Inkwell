@@ -1,0 +1,1095 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inkwell</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3E6B50">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* layout: fixed sidebar (list + search + actions) beside an editor pane on desktop; the two panes become full-screen views swapped by a back button on phone widths */
+:root {
+  --bg: #EEF0E9;
+  --surface: #FFFFFF;
+  --surface-hover: #F4F6EF;
+  --border: #DADFD2;
+  --text: #1B2018;
+  --text-muted: #6B7266;
+  --accent: #3E6B50;
+  --accent-soft: #E3ECE3;
+  --on-accent: #F7F9F3;
+  --danger: #AE4639;
+  --danger-soft: #F5E4E0;
+  --font-display: 'Literata', Georgia, 'Times New Roman', serif;
+  --font-ui: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171A13;
+    --surface: #1D221A;
+    --surface-hover: #262B21;
+    --border: #2E3327;
+    --text: #E6E9DF;
+    --text-muted: #97A089;
+    --accent: #80B798;
+    --accent-soft: rgba(128, 183, 152, 0.16);
+    --on-accent: #11150D;
+    --danger: #E08777;
+    --danger-soft: rgba(224, 135, 119, 0.16);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171A13;
+  --surface: #1D221A;
+  --surface-hover: #262B21;
+  --border: #2E3327;
+  --text: #E6E9DF;
+  --text-muted: #97A089;
+  --accent: #80B798;
+  --accent-soft: rgba(128, 183, 152, 0.16);
+  --on-accent: #11150D;
+  --danger: #E08777;
+  --danger-soft: rgba(224, 135, 119, 0.16);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+/* Claude's artifact viewer normally injects this rule so that toggling
+   an element's `hidden` attribute always hides it; this file runs
+   outside that environment, so it's declared explicitly here. Without
+   it, any element whose own CSS sets `display` (the import dialog, the
+   editor panes) ignores `hidden` entirely. */
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+button, input, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+::selection { background: var(--accent-soft); }
+
+.app {
+  display: flex;
+  height: 100%;
+  min-height: 100%;
+}
+
+/* ---- sidebar ---- */
+.sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  min-height: 0;
+}
+.sidebar-top {
+  padding: 18px 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-mark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--accent);
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: 0.01em;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.btn:focus-visible, .icon-btn:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn-new {
+  background: var(--accent);
+  color: var(--on-accent);
+  width: 100%;
+}
+.btn-new:hover { filter: brightness(1.06); }
+.btn-new svg { width: 15px; height: 15px; }
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-muted);
+  flex: 1;
+}
+.btn-ghost:hover { background: var(--surface-hover); color: var(--text); }
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.btn-primary:hover { filter: brightness(1.06); }
+.btn-danger-outline {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn-danger-outline:hover { background: var(--danger-soft); }
+
+.search-wrap {
+  position: relative;
+  padding: 0 18px;
+}
+.search-wrap svg {
+  position: absolute;
+  left: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+#searchInput {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 8px 10px 8px 32px;
+  font-size: 13.5px;
+}
+#searchInput::placeholder { color: var(--text-muted); }
+#searchInput::-webkit-search-cancel-button { cursor: pointer; }
+
+.note-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px 0;
+  min-height: 0;
+}
+.note-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 10px;
+  margin-bottom: 2px;
+  cursor: pointer;
+}
+.note-item:hover { background: var(--surface-hover); }
+.note-item.active { background: var(--accent-soft); }
+.note-item-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.note-item-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pin-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: -2px -2px 0 0;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-muted);
+  opacity: 0.55;
+  cursor: pointer;
+}
+.pin-toggle:hover { background: var(--surface-hover); opacity: 1; }
+.pin-toggle svg { width: 13px; height: 13px; }
+.pin-toggle svg path { fill: none; }
+.pin-toggle.pinned {
+  color: var(--accent);
+  opacity: 1;
+}
+.pin-toggle.pinned svg path { fill: currentColor; }
+.list-section-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 10px 10px 4px;
+}
+.list-section-label:first-child { padding-top: 2px; }
+.note-item-snippet {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+.note-item-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+}
+.note-list-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sidebar-bottom {
+  border-top: 1px solid var(--border);
+  padding: 12px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.storage-status {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+.sidebar-actions { display: flex; gap: 8px; }
+
+/* ---- editor pane ---- */
+.editor-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.editor-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 15px;
+  text-align: center;
+  padding: 24px;
+}
+.editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 32px 24px;
+}
+.editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 10px;
+  gap: 10px;
+}
+.editor-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+.editor-bar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.icon-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+.delete-btn.confirming {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.pin-btn-editor svg { width: 13px; height: 13px; }
+.pin-btn-editor svg path { fill: none; }
+.pin-btn-editor.pinned {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pin-btn-editor.pinned svg path { fill: currentColor; }
+.back-btn {
+  display: none;
+  font-size: 18px;
+  padding: 4px 8px;
+}
+.title-input {
+  border: none;
+  background: transparent;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 27px;
+  padding: 6px 0 4px;
+  width: 100%;
+}
+.title-input::placeholder { color: var(--text-muted); opacity: 0.7; }
+.body-input {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border: none;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  line-height: 1.7;
+  padding: 10px 0 20px;
+  max-width: 65ch;
+}
+.body-input::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+/* ---- import sheet ---- */
+.import-sheet {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 8, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+.import-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  max-width: 380px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.import-card h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+.import-card p {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+.import-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.import-actions .btn { width: 100%; }
+
+/* ---- toast ---- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  z-index: 20;
+  max-width: 90vw;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .back-btn { display: inline-flex; }
+  .sidebar, .editor-pane { width: 100%; }
+  .app[data-view="list"] .editor-pane { display: none; }
+  .app[data-view="editor"] .sidebar { display: none; }
+  .editor { padding: 0 18px 18px; max-width: none; }
+  .body-input { max-width: none; }
+}
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+</head>
+<body>
+
+<div class="app" id="app" data-view="list">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">&#9998;</span>
+        <span class="brand-name">Inkwell</span>
+      </div>
+      <button class="btn btn-new" id="newNoteBtn" type="button">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        New note
+      </button>
+    </div>
+    <div class="search-wrap">
+      <svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.4"/><path d="M13 13l-2.3-2.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <input type="search" id="searchInput" placeholder="Search notes" aria-label="Search notes">
+    </div>
+    <div class="note-list" id="noteList" role="list" aria-label="Notes"></div>
+    <div class="sidebar-bottom">
+      <div class="storage-status" id="storageStatus">Checking storage&hellip;</div>
+      <div class="sidebar-actions">
+        <button class="btn btn-ghost" id="backupBtn" type="button">Backup notes</button>
+        <button class="btn btn-ghost" id="importBtn" type="button">Import backup</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </aside>
+
+  <main class="editor-pane" id="editorPane">
+    <div class="editor-empty" id="editorEmpty">
+      <p>Select a note, or start a new one.</p>
+    </div>
+    <div class="editor" id="editor" hidden>
+      <div class="editor-bar">
+        <button class="icon-btn back-btn" id="backBtn" type="button" aria-label="Back to notes">&#8249; Notes</button>
+        <span class="editor-meta" id="editorMeta"></span>
+        <span class="editor-bar-actions">
+          <button class="icon-btn pin-btn-editor" id="pinBtn" type="button">
+            <svg viewBox="0 0 16 16"><path d="M8 1.3a3.6 3.6 0 0 0-3.6 3.6c0 2.6 3.6 7.1 3.6 7.1s3.6-4.5 3.6-7.1A3.6 3.6 0 0 0 8 1.3z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="4.9" r="1.2" fill="currentColor"/></svg>
+            Pin
+          </button>
+          <button class="icon-btn delete-btn" id="deleteBtn" type="button">Delete</button>
+        </span>
+      </div>
+      <input class="title-input" id="titleInput" placeholder="Untitled note" aria-label="Note title" maxlength="200">
+      <textarea class="body-input" id="bodyInput" placeholder="Start writing&hellip;" aria-label="Note body"></textarea>
+    </div>
+  </main>
+</div>
+
+<div class="import-sheet" id="importSheet" hidden>
+  <div class="import-card">
+    <h2 id="importTitle">Import backup</h2>
+    <p id="importSummary"></p>
+    <div class="import-actions">
+      <button class="btn btn-primary" id="importMergeBtn" type="button">Merge with existing notes</button>
+      <button class="btn btn-danger-outline" id="importReplaceBtn" type="button">Replace all notes</button>
+      <button class="btn btn-ghost" id="importCancelBtn" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "inkwell:notes:v1";
+
+  var state = {
+    notes: [],
+    activeId: null,
+    query: "",
+    pendingImport: null,
+    deleteArmedId: null,
+    deleteTimer: null
+  };
+
+  var saveTimer = null;
+  var toastTimer = null;
+
+  var els = {
+    app: document.getElementById("app"),
+    noteList: document.getElementById("noteList"),
+    searchInput: document.getElementById("searchInput"),
+    newNoteBtn: document.getElementById("newNoteBtn"),
+    editorEmpty: document.getElementById("editorEmpty"),
+    editor: document.getElementById("editor"),
+    editorMeta: document.getElementById("editorMeta"),
+    titleInput: document.getElementById("titleInput"),
+    bodyInput: document.getElementById("bodyInput"),
+    deleteBtn: document.getElementById("deleteBtn"),
+    pinBtn: document.getElementById("pinBtn"),
+    backBtn: document.getElementById("backBtn"),
+    storageStatus: document.getElementById("storageStatus"),
+    backupBtn: document.getElementById("backupBtn"),
+    importBtn: document.getElementById("importBtn"),
+    importFile: document.getElementById("importFile"),
+    importSheet: document.getElementById("importSheet"),
+    importSummary: document.getElementById("importSummary"),
+    importMergeBtn: document.getElementById("importMergeBtn"),
+    importReplaceBtn: document.getElementById("importReplaceBtn"),
+    importCancelBtn: document.getElementById("importCancelBtn"),
+    toast: document.getElementById("toast")
+  };
+
+  function uid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "n-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
+  function nowIso() { return new Date().toISOString(); }
+
+  // ---------- persistence ----------
+
+  function loadNotes() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(isValidNote);
+    } catch (e) {
+      showToast("Couldn't read saved notes. Starting with an empty notebook.");
+      return [];
+    }
+  }
+
+  function isValidNote(n) {
+    return n && typeof n === "object" && typeof n.id === "string";
+  }
+
+  function normalizeNote(n) {
+    return {
+      id: typeof n.id === "string" ? n.id : uid(),
+      title: typeof n.title === "string" ? n.title : "",
+      body: typeof n.body === "string" ? n.body : "",
+      pinned: n.pinned === true,
+      createdAt: typeof n.createdAt === "string" ? n.createdAt : nowIso(),
+      updatedAt: typeof n.updatedAt === "string" ? n.updatedAt : nowIso()
+    };
+  }
+
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persistNow, 350);
+  }
+
+  function persistNow() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.notes));
+    } catch (e) {
+      showToast("Couldn't save — storage may be full or blocked by your browser.");
+    }
+  }
+
+  function requestPersistentStorage() {
+    if (!(navigator.storage && navigator.storage.persist)) {
+      els.storageStatus.textContent = "Storage persistence isn't supported here.";
+      return;
+    }
+    var check = navigator.storage.persisted ? navigator.storage.persisted() : Promise.resolve(false);
+    check.then(function (already) {
+      if (already) {
+        els.storageStatus.textContent = "Storage: persistent";
+        return;
+      }
+      navigator.storage.persist().then(function (granted) {
+        els.storageStatus.textContent = granted
+          ? "Storage: persistent"
+          : "Storage: not persistent — back up your notes periodically";
+      }).catch(function () {
+        els.storageStatus.textContent = "Storage status unavailable";
+      });
+    }).catch(function () {
+      els.storageStatus.textContent = "Storage status unavailable";
+    });
+  }
+
+  // ---------- rendering ----------
+
+  function getActiveNote() {
+    for (var i = 0; i < state.notes.length; i++) {
+      if (state.notes[i].id === state.activeId) return state.notes[i];
+    }
+    return null;
+  }
+
+  function filteredSortedNotes() {
+    var q = state.query.trim().toLowerCase();
+    var list = state.notes.slice();
+    if (q) {
+      list = list.filter(function (n) {
+        return (n.title + " " + n.body).toLowerCase().indexOf(q) !== -1;
+      });
+    }
+    list.sort(function (a, b) {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+    return list;
+  }
+
+  function formatRelative(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    var diffMs = Date.now() - d.getTime();
+    var mins = Math.round(diffMs / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return mins + "m ago";
+    var hours = Math.round(mins / 60);
+    if (hours < 24) return hours + "h ago";
+    var days = Math.round(hours / 24);
+    if (days < 7) return days + "d ago";
+    var sameYear = d.getFullYear() === new Date().getFullYear();
+    return d.toLocaleDateString(undefined, sameYear
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  function snippetOf(note) {
+    var t = note.body.replace(/\s+/g, " ").trim();
+    return t;
+  }
+
+  var PIN_ICON_SVG = '<svg viewBox="0 0 16 16"><path d="M8 1.3a3.6 3.6 0 0 0-3.6 3.6c0 2.6 3.6 7.1 3.6 7.1s3.6-4.5 3.6-7.1A3.6 3.6 0 0 0 8 1.3z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="4.9" r="1.2" fill="currentColor"/></svg>';
+
+  function buildNoteItem(note) {
+    var item = document.createElement("button");
+    item.type = "button";
+    item.className = "note-item" + (note.id === state.activeId ? " active" : "");
+    item.setAttribute("role", "listitem");
+
+    var top = document.createElement("div");
+    top.className = "note-item-top";
+
+    var title = document.createElement("div");
+    title.className = "note-item-title";
+    title.textContent = note.title.trim() || "Untitled note";
+
+    var pin = document.createElement("span");
+    pin.className = "pin-toggle" + (note.pinned ? " pinned" : "");
+    pin.setAttribute("role", "button");
+    pin.setAttribute("tabindex", "0");
+    pin.setAttribute("aria-label", note.pinned ? "Unpin note" : "Pin note");
+    pin.innerHTML = PIN_ICON_SVG;
+    pin.addEventListener("click", function (e) {
+      e.stopPropagation();
+      togglePin(note.id);
+    });
+    pin.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePin(note.id);
+      }
+    });
+
+    top.appendChild(title);
+    top.appendChild(pin);
+
+    var snippet = document.createElement("div");
+    snippet.className = "note-item-snippet";
+    snippet.textContent = snippetOf(note);
+
+    var meta = document.createElement("div");
+    meta.className = "note-item-meta";
+    meta.textContent = formatRelative(note.updatedAt);
+
+    item.appendChild(top);
+    item.appendChild(snippet);
+    item.appendChild(meta);
+    item.addEventListener("click", function () { openNote(note.id); });
+
+    return item;
+  }
+
+  function renderList() {
+    var list = filteredSortedNotes();
+    els.noteList.innerHTML = "";
+
+    if (state.notes.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "note-list-empty";
+      empty.textContent = "No notes yet. Start one with “New note.”";
+      els.noteList.appendChild(empty);
+      return;
+    }
+    if (list.length === 0) {
+      var noMatch = document.createElement("div");
+      noMatch.className = "note-list-empty";
+      noMatch.textContent = "No notes match “" + state.query.trim() + "”.";
+      els.noteList.appendChild(noMatch);
+      return;
+    }
+
+    var pinned = list.filter(function (n) { return n.pinned; });
+    var unpinned = list.filter(function (n) { return !n.pinned; });
+
+    if (pinned.length > 0) {
+      var pinnedLabel = document.createElement("div");
+      pinnedLabel.className = "list-section-label";
+      pinnedLabel.textContent = "Pinned";
+      els.noteList.appendChild(pinnedLabel);
+      pinned.forEach(function (note) { els.noteList.appendChild(buildNoteItem(note)); });
+
+      if (unpinned.length > 0) {
+        var othersLabel = document.createElement("div");
+        othersLabel.className = "list-section-label";
+        othersLabel.textContent = "Notes";
+        els.noteList.appendChild(othersLabel);
+      }
+    }
+    unpinned.forEach(function (note) { els.noteList.appendChild(buildNoteItem(note)); });
+  }
+
+  function renderEditor() {
+    var note = getActiveNote();
+    if (!note) {
+      els.editor.hidden = true;
+      els.editorEmpty.hidden = false;
+      return;
+    }
+    els.editorEmpty.hidden = true;
+    els.editor.hidden = false;
+
+    if (document.activeElement !== els.titleInput) els.titleInput.value = note.title;
+    if (document.activeElement !== els.bodyInput) els.bodyInput.value = note.body;
+
+    var words = note.body.trim() ? note.body.trim().split(/\s+/).length : 0;
+    els.editorMeta.textContent = "Edited " + formatRelative(note.updatedAt) + " · " + words + " word" + (words === 1 ? "" : "s");
+
+    var armed = state.deleteArmedId === note.id;
+    els.deleteBtn.textContent = armed ? "Confirm delete" : "Delete";
+    els.deleteBtn.classList.toggle("confirming", armed);
+
+    els.pinBtn.innerHTML = PIN_ICON_SVG + (note.pinned ? " Pinned" : " Pin");
+    els.pinBtn.classList.toggle("pinned", note.pinned);
+  }
+
+  function render() {
+    renderList();
+    renderEditor();
+  }
+
+  // ---------- actions ----------
+
+  function openNote(id) {
+    disarmDelete();
+    state.activeId = id;
+    els.app.dataset.view = "editor";
+    render();
+    if (window.innerWidth <= 760) {
+      // keep caret out of the way on first open
+    } else {
+      els.titleInput.focus();
+      if (!getActiveNote().title) {
+        // leave caret for user
+      }
+    }
+  }
+
+  function createNote() {
+    var note = {
+      id: uid(),
+      title: "",
+      body: "",
+      pinned: false,
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    };
+    state.notes.unshift(note);
+    persistNow();
+    state.activeId = note.id;
+    els.app.dataset.view = "editor";
+    render();
+    els.titleInput.focus();
+  }
+
+  function updateActiveNote(patch) {
+    var note = getActiveNote();
+    if (!note) return;
+    Object.assign(note, patch, { updatedAt: nowIso() });
+    scheduleSave();
+    renderList();
+  }
+
+  function togglePin(id) {
+    var note = null;
+    for (var i = 0; i < state.notes.length; i++) {
+      if (state.notes[i].id === id) { note = state.notes[i]; break; }
+    }
+    if (!note) return;
+    note.pinned = !note.pinned;
+    note.updatedAt = nowIso();
+    persistNow();
+    renderList();
+    if (note.id === state.activeId) renderEditor();
+  }
+
+  function disarmDelete() {
+    clearTimeout(state.deleteTimer);
+    state.deleteArmedId = null;
+  }
+
+  function handleDeleteClick() {
+    var note = getActiveNote();
+    if (!note) return;
+    if (state.deleteArmedId === note.id) {
+      disarmDelete();
+      var idx = state.notes.findIndex(function (n) { return n.id === note.id; });
+      if (idx !== -1) state.notes.splice(idx, 1);
+      state.activeId = null;
+      persistNow();
+      els.app.dataset.view = "list";
+      render();
+      showToast("Note deleted.");
+      return;
+    }
+    state.deleteArmedId = note.id;
+    renderEditor();
+    clearTimeout(state.deleteTimer);
+    state.deleteTimer = setTimeout(function () {
+      disarmDelete();
+      renderEditor();
+    }, 3500);
+  }
+
+  function goBackToList() {
+    disarmDelete();
+    els.app.dataset.view = "list";
+  }
+
+  // ---------- backup / import ----------
+
+  function buildBackupPayload() {
+    return {
+      app: "inkwell",
+      version: 1,
+      exportedAt: nowIso(),
+      notes: state.notes
+    };
+  }
+
+  function requestBackup() {
+    // Plain browser download — no platform, no account, works anywhere
+    // this file is opened.
+    try {
+      var payload = JSON.stringify(buildBackupPayload(), null, 2);
+      var blob = new Blob([payload], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var stamp = new Date().toISOString().slice(0, 10);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "inkwell-backup-" + stamp + ".json";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      showToast("Backup downloaded.");
+    } catch (e) {
+      showToast("Couldn't create the backup file.");
+    }
+  }
+
+  function handleImportFile(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var data;
+      try {
+        data = JSON.parse(String(reader.result));
+      } catch (e) {
+        showToast("That file isn't valid JSON.");
+        return;
+      }
+      var incoming = Array.isArray(data) ? data : data && Array.isArray(data.notes) ? data.notes : null;
+      if (!incoming) {
+        showToast("That file doesn't look like an Inkwell backup.");
+        return;
+      }
+      var normalized = incoming.filter(isValidNote).map(normalizeNote);
+      if (normalized.length === 0) {
+        showToast("No notes found in that file.");
+        return;
+      }
+      state.pendingImport = normalized;
+      var exportedAt = data && typeof data.exportedAt === "string" ? formatRelative(data.exportedAt) : null;
+      els.importSummary.textContent = "Found " + normalized.length + " note" + (normalized.length === 1 ? "" : "s") +
+        (exportedAt ? " from a backup made " + exportedAt.toLowerCase() + "." : " in this file.") +
+        " Merge keeps your current notes and adds anything new or newer. Replace erases your current notes first.";
+      els.importSheet.hidden = false;
+    };
+    reader.onerror = function () {
+      showToast("Couldn't read that file.");
+    };
+    reader.readAsText(file);
+  }
+
+  function closeImportSheet() {
+    els.importSheet.hidden = true;
+    state.pendingImport = null;
+    els.importFile.value = "";
+  }
+
+  function applyImportMerge() {
+    var incoming = state.pendingImport || [];
+    var byId = {};
+    state.notes.forEach(function (n) { byId[n.id] = n; });
+    var added = 0, updated = 0;
+    incoming.forEach(function (n) {
+      var existing = byId[n.id];
+      if (!existing) {
+        state.notes.push(n);
+        byId[n.id] = n;
+        added++;
+      } else if (n.updatedAt > existing.updatedAt) {
+        Object.assign(existing, n);
+        updated++;
+      }
+    });
+    persistNow();
+    closeImportSheet();
+    render();
+    showToast("Imported: " + added + " added, " + updated + " updated.");
+  }
+
+  function applyImportReplace() {
+    state.notes = (state.pendingImport || []).slice();
+    state.activeId = null;
+    persistNow();
+    closeImportSheet();
+    els.app.dataset.view = "list";
+    render();
+    showToast("Notes replaced from backup.");
+  }
+
+  // ---------- toast ----------
+
+  function showToast(msg) {
+    clearTimeout(toastTimer);
+    els.toast.textContent = msg;
+    els.toast.hidden = false;
+    toastTimer = setTimeout(function () { els.toast.hidden = true; }, 3200);
+  }
+
+  // ---------- wiring ----------
+
+  els.newNoteBtn.addEventListener("click", createNote);
+  els.searchInput.addEventListener("input", function (e) {
+    state.query = e.target.value;
+    renderList();
+  });
+  els.titleInput.addEventListener("input", function (e) {
+    updateActiveNote({ title: e.target.value });
+    renderEditorMetaOnly();
+  });
+  els.bodyInput.addEventListener("input", function (e) {
+    updateActiveNote({ body: e.target.value });
+    renderEditorMetaOnly();
+  });
+  els.deleteBtn.addEventListener("click", handleDeleteClick);
+  els.pinBtn.addEventListener("click", function () {
+    var note = getActiveNote();
+    if (note) togglePin(note.id);
+  });
+  els.backBtn.addEventListener("click", goBackToList);
+  els.backupBtn.addEventListener("click", requestBackup);
+  els.importBtn.addEventListener("click", function () { els.importFile.click(); });
+  els.importFile.addEventListener("change", function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (file) handleImportFile(file);
+  });
+  els.importMergeBtn.addEventListener("click", applyImportMerge);
+  els.importReplaceBtn.addEventListener("click", applyImportReplace);
+  els.importCancelBtn.addEventListener("click", closeImportSheet);
+
+  function renderEditorMetaOnly() {
+    var note = getActiveNote();
+    if (!note) return;
+    var words = note.body.trim() ? note.body.trim().split(/\s+/).length : 0;
+    els.editorMeta.textContent = "Edited just now · " + words + " word" + (words === 1 ? "" : "s");
+  }
+
+  // ---------- flush pending autosave before the page disappears ----------
+  // A debounced save can be in flight when a tab closes or the app is
+  // backgrounded; without this, the last few keystrokes before that can
+  // be lost. visibilitychange covers mobile backgrounding (Android/iOS
+  // rarely fire beforeunload reliably); pagehide and beforeunload cover
+  // desktop tab/window close.
+  function flushPendingSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      persistNow();
+    }
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushPendingSave();
+  });
+  window.addEventListener("pagehide", flushPendingSave);
+  window.addEventListener("beforeunload", flushPendingSave);
+
+  // ---------- init ----------
+
+  state.notes = loadNotes().map(normalizeNote);
+  requestPersistentStorage();
+  render();
+})();
+</script>
+<script>
+  // Registers the offline cache (sw.js). Safe to no-op: service workers
+  // only run on https (or localhost), so this silently does nothing if
+  // the file is ever opened directly instead of through the hosted site.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+</script>
+</body>
+</html>
